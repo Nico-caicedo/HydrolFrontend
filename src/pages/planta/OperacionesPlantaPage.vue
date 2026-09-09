@@ -1,89 +1,136 @@
 <template>
-  <q-page class="planta-page q-pa-md">
-    <div class="page-top row items-start justify-between q-mb-md q-col-gutter-sm">
-      <div class="col">
-        <div class="row items-center q-gutter-sm">
+  <q-page class="planta-page">
+    <div class="planta-inner">
+      <div class="page-top row items-start justify-between q-col-gutter-sm q-mb-md">
+        <div class="col-12 col-md">
+          <div class="text-h5 text-weight-bold text-slate">Operaciones de Planta Diviso</div>
+          <div class="text-body2 text-blue-grey-6">
+            {{ seccionActiva?.descripcion || 'Consulta y registra información por módulo.' }}
+          </div>
+        </div>
+        <div class="col-12 col-md-auto row q-gutter-sm items-center justify-end page-actions">
           <q-btn
-            v-if="seccionActiva"
-            flat
-            round
-            dense
-            icon="arrow_back"
+            v-if="esMacromedidores || esOperaciones"
+            outline
+            no-caps
+            icon="refresh"
+            :label="$q.screen.gt.xs ? 'Recargar' : undefined"
             color="primary"
-            aria-label="Volver a módulos"
-            @click="volverModulos"
+            :loading="cargandoListado"
+            :disable="cargandoListado || !seccionActiva"
+            @click="refrescar"
           />
-          <div>
-            <div class="text-h5 text-weight-bold text-slate">
-              {{ seccionActiva ? seccionActiva.titulo : 'Operaciones de Planta Diviso' }}
-            </div>
-            <div class="text-body2 text-blue-grey-6">
-              {{
-                seccionActiva
-                  ? seccionActiva.descripcion
-                  : 'Selecciona un módulo para consultar o registrar información.'
-              }}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div v-if="seccionActiva" class="col-auto">
-        <q-btn unelevated no-caps icon="add" label="Nuevo registro" class="btn-gradient" @click="abrirFormulario()" />
-      </div>
-    </div>
-
-    <div v-if="!seccionActiva" class="row q-col-gutter-md">
-      <div v-for="seccion in secciones" :key="seccion.id" class="col-xs-12 col-sm-6 col-md-4">
-        <button type="button" class="modulo-card full-width text-left" @click="abrirSeccion(seccion)">
-          <div class="modulo-icon flex flex-center" :style="{ background: `${seccion.color}1a`, color: seccion.color }">
-            <q-icon :name="seccion.icono" size="28px" />
-          </div>
-          <div class="modulo-title">{{ seccion.titulo }}</div>
-          <div class="modulo-desc">{{ seccion.descripcion }}</div>
-          <div class="modulo-footer row items-center justify-between">
-            <span class="text-caption text-primary text-weight-medium">Ver listado</span>
-            <q-icon name="arrow_forward" color="primary" size="18px" />
-          </div>
-        </button>
-      </div>
-    </div>
-
-    <div v-else class="hs-card listado-card">
-      <div class="row items-center q-pa-md q-col-gutter-sm">
-        <div class="col">
-          <q-input v-model="filtro" dense outlined clearable placeholder="Buscar en el listado..." class="search-input">
-            <template #prepend>
-              <q-icon name="search" />
-            </template>
-          </q-input>
-        </div>
-        <div class="col-auto">
-          <q-chip outline color="primary" :label="`${filas.length} registro(s)`" dense />
+          <q-btn
+            unelevated
+            no-caps
+            icon="add"
+            :label="$q.screen.gt.xs ? 'Nuevo registro' : undefined"
+            class="btn-gradient"
+            :disable="cargandoListado || !seccionActiva"
+            @click="onNuevoRegistro"
+          />
         </div>
       </div>
 
-      <q-table
-        flat
-        :rows="filas"
-        :columns="columnas"
-        row-key="id"
-        :pagination="{ rowsPerPage: 10 }"
-        :filter="filtro"
-        :loading="cargandoListado"
-        class="planta-table"
-        no-data-label="No hay registros en esta sección"
-      >
-        <template #body-cell-acciones="props">
-          <q-td :props="props" class="q-gutter-xs">
-            <q-btn flat dense round icon="edit" color="primary" size="sm" @click="abrirFormulario(props.row)">
-              <q-tooltip>Editar</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round icon="delete" color="negative" size="sm" @click="eliminar(props.row)">
-              <q-tooltip>Eliminar</q-tooltip>
-            </q-btn>
-          </q-td>
-        </template>
-      </q-table>
+      <div class="hs-card listado-card">
+        <q-tabs
+          v-model="tabId"
+          dense
+          align="left"
+          outside-arrows
+          mobile-arrows
+          class="planta-tabs text-primary"
+          active-color="primary"
+          indicator-color="primary"
+          narrow-indicator
+          @update:model-value="onTabChange"
+        >
+          <q-tab
+            v-for="seccion in secciones"
+            :key="seccion.id"
+            :name="seccion.id"
+            :icon="seccion.icono"
+            :label="etiquetaTab(seccion)"
+            :style="{ '--tab-accent': seccion.color }"
+            class="planta-tab"
+          />
+        </q-tabs>
+
+        <q-separator />
+
+        <div class="toolbar row items-center q-pa-md q-col-gutter-sm">
+          <div class="col-12 col-sm">
+            <q-input
+              v-model="filtro"
+              dense
+              outlined
+              clearable
+              placeholder="Buscar en el listado..."
+              class="search-input"
+            >
+              <template #prepend>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+          </div>
+          <div class="col-12 col-sm-auto row items-center q-gutter-sm justify-between justify-sm-end">
+            <q-btn
+              v-if="esMacromedidores || esOperaciones"
+              flat
+              dense
+              no-caps
+              icon="refresh"
+              label="Recargar"
+              color="primary"
+              class="gt-xs"
+              :loading="cargandoListado"
+              :disable="cargandoListado"
+              @click="refrescar"
+            />
+            <q-chip outline color="primary" :label="`${filas.length} registro(s)`" dense />
+          </div>
+        </div>
+
+        <q-table
+          flat
+          :rows="filas"
+          :columns="columnas"
+          row-key="id"
+          :pagination="{ rowsPerPage: 10 }"
+          :filter="filtro"
+          :loading="cargandoListado"
+          class="planta-table"
+          :no-data-label="`No hay registros en ${seccionActiva?.titulo || 'esta sección'}`"
+          @row-click="onFilaClick"
+        >
+          <template #body-cell-acciones="props">
+            <q-td :props="props" class="q-gutter-xs">
+              <q-btn
+                flat
+                dense
+                round
+                :icon="esMacromedidores ? 'update' : 'edit'"
+                color="primary"
+                size="sm"
+                @click.stop="abrirEdicion(props.row)"
+              >
+                <q-tooltip>{{ esMacromedidores ? 'Actualizar lecturas' : 'Editar' }}</q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                dense
+                round
+                icon="delete"
+                color="negative"
+                size="sm"
+                @click.stop="eliminar(props.row)"
+              >
+                <q-tooltip>Eliminar</q-tooltip>
+              </q-btn>
+            </q-td>
+          </template>
+        </q-table>
+      </div>
     </div>
   </q-page>
 </template>
@@ -91,6 +138,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Dialog, useQuasar } from 'quasar'
 import Utils from '@/Commons/Utils'
 import { api } from '@/boot/axios'
 import { listarRegistros, eliminarRegistro, reemplazarRegistros } from '@/Commons/plantaStorage'
@@ -99,8 +147,11 @@ import {
   SECCIONES_PLANTA,
   COLUMNAS,
   TIPO_REGISTRO_PLANTA,
+  fechaHoyLocal,
   mapearRegistrosMacromedidoresApi,
+  soloFecha,
 } from '@/config/planta'
+import { mapearRegistrosOperacionesApi } from '@/Commons/registroDiarioOperacion'
 
 const RUTAS_NUEVO = {
   operaciones: '/planta/operaciones/nuevo',
@@ -114,19 +165,63 @@ const RUTAS_EDITAR = {
   calidad: (id) => `/planta/calidad/${id}`,
 }
 
+const TAB_LABELS_CORTOS = {
+  macromedidores: 'Macromedidores',
+  operaciones: 'Operaciones',
+  calidad: 'Calidad',
+}
+
+const $q = useQuasar()
 const route = useRoute()
 const router = useRouter()
 
 const secciones = SECCIONES_PLANTA
-const seccionActiva = ref(null)
+const tabId = ref(secciones[0]?.id || 'macromedidores')
 const filtro = ref('')
 const filas = ref([])
 const cargandoListado = ref(false)
+
+const seccionActiva = computed(() => secciones.find((s) => s.id === tabId.value) || null)
 
 const columnas = computed(() => {
   if (!seccionActiva.value) return []
   return COLUMNAS[seccionActiva.value.id] || []
 })
+
+const esMacromedidores = computed(() => seccionActiva.value?.id === 'macromedidores')
+const esOperaciones = computed(() => seccionActiva.value?.id === 'operaciones')
+
+const etiquetaTab = (seccion) => {
+  if ($q.screen.lt.md) return TAB_LABELS_CORTOS[seccion.id] || seccion.titulo
+  return seccion.titulo
+}
+
+const hayRegistroConFechaHoy = (lista) => {
+  const hoy = fechaHoyLocal()
+  return (lista || []).some((r) => {
+    const fecha =
+      soloFecha(r?.fecha) ||
+      soloFecha(r?.Fecha) ||
+      soloFecha(r?.FechaC) ||
+      soloFecha(r?.raw?.FechaC) ||
+      soloFecha(r?.raw?.Fecha) ||
+      (typeof r?.fecha === 'string' ? r.fecha.slice(0, 10) : null)
+    return fecha === hoy
+  })
+}
+
+const alertarSoloUnRegistroDiario = () =>
+  new Promise((resolve) => {
+    Dialog.create({
+      title: 'Registro diario',
+      message:
+        'Solo se permite un registro diario de macromedidores. Ya existe un registro para la fecha actual.',
+      ok: { label: 'Entendido', unelevated: true, color: 'primary' },
+      persistent: true,
+    })
+      .onOk(() => resolve())
+      .onDismiss(() => resolve())
+  })
 
 const traerRegistrosMacromedidores = async () => {
   const idPlanta = obtenerIdPlantaTratamiento()
@@ -142,6 +237,20 @@ const traerRegistrosMacromedidores = async () => {
   return mapearRegistrosMacromedidoresApi(dato)
 }
 
+const traerRegistrosOperaciones = async () => {
+  const idPlanta = obtenerIdPlantaTratamiento()
+  const tipo = TIPO_REGISTRO_PLANTA.operaciones
+  const response = await api.get(`operaciones-planta/${idPlanta}/${tipo}/traer-registro`)
+
+  if (response.data?.IsExito === false) {
+    Utils.notificacion(response.data?.Mensaje || 'No se pudieron cargar los registros', false)
+    return []
+  }
+
+  const dato = response.data?.Dato ?? response.data
+  return mapearRegistrosOperacionesApi(dato)
+}
+
 const refrescar = async () => {
   if (!seccionActiva.value) {
     filas.value = []
@@ -150,20 +259,23 @@ const refrescar = async () => {
 
   const seccionId = seccionActiva.value.id
 
-  if (seccionId === 'macromedidores') {
+  if (seccionId === 'macromedidores' || seccionId === 'operaciones') {
     cargandoListado.value = true
     Utils.loadingNotify(true, 'Cargando registros...')
     try {
-      const lista = await traerRegistrosMacromedidores()
-      reemplazarRegistros('macromedidores', lista)
+      const lista =
+        seccionId === 'macromedidores'
+          ? await traerRegistrosMacromedidores()
+          : await traerRegistrosOperaciones()
+      reemplazarRegistros(seccionId, lista)
       filas.value = lista
     } catch (error) {
-      console.error('Error al traer registros de macromedidores:', error)
+      console.error(`Error al traer registros de ${seccionId}:`, error)
       Utils.notificacion(
         error.response?.data?.Mensaje || 'No se pudieron cargar los registros.',
         false,
       )
-      filas.value = listarRegistros('macromedidores')
+      filas.value = listarRegistros(seccionId)
     } finally {
       cargandoListado.value = false
       Utils.loadingNotify(false, '')
@@ -174,28 +286,68 @@ const refrescar = async () => {
   filas.value = listarRegistros(seccionId)
 }
 
-const abrirSeccion = (seccion) => {
-  seccionActiva.value = seccion
+const seleccionarSeccion = (id, { syncRoute = true } = {}) => {
+  const encontrada = secciones.find((s) => s.id === id) || secciones[0]
+  if (!encontrada) return
+
+  tabId.value = encontrada.id
   filtro.value = ''
+  if (syncRoute && route.query.seccion !== encontrada.id) {
+    router.replace({ path: '/planta', query: { seccion: encontrada.id } })
+  }
   refrescar()
-  router.replace({ path: '/planta', query: { seccion: seccion.id } })
 }
 
-const volverModulos = () => {
-  seccionActiva.value = null
-  filtro.value = ''
-  router.replace({ path: '/planta' })
+const onTabChange = (id) => {
+  seleccionarSeccion(id)
 }
 
-const abrirFormulario = (row = null) => {
+const abrirEdicion = (row) => {
+  const id = seccionActiva.value?.id
+  if (!id || row?.id == null) return
+  router.push(RUTAS_EDITAR[id](row.id))
+}
+
+const onNuevoRegistro = async () => {
   const id = seccionActiva.value?.id
   if (!id || !RUTAS_NUEVO[id]) return
 
-  if (row?.id != null) {
-    router.push(RUTAS_EDITAR[id](row.id))
-  } else {
-    router.push(RUTAS_NUEVO[id])
+  if (id === 'macromedidores') {
+    if (hayRegistroConFechaHoy(filas.value)) {
+      await alertarSoloUnRegistroDiario()
+      return
+    }
+
+    cargandoListado.value = true
+    Utils.loadingNotify(true, 'Validando registro del día...')
+    try {
+      const lista = await traerRegistrosMacromedidores()
+      reemplazarRegistros('macromedidores', lista)
+      filas.value = lista
+
+      if (hayRegistroConFechaHoy(lista)) {
+        Utils.loadingNotify(false, '')
+        await alertarSoloUnRegistroDiario()
+        return
+      }
+    } catch (error) {
+      console.error('Error al validar registro del día:', error)
+      Utils.notificacion(
+        error.response?.data?.Mensaje || 'No se pudo validar si ya existe registro del día.',
+        false,
+      )
+      return
+    } finally {
+      cargandoListado.value = false
+      Utils.loadingNotify(false, '')
+    }
   }
+
+  router.push(RUTAS_NUEVO[id])
+}
+
+const onFilaClick = (_evt, row) => {
+  abrirEdicion(row)
 }
 
 const eliminar = async (row) => {
@@ -211,22 +363,21 @@ const eliminar = async (row) => {
 }
 
 const aplicarQuery = () => {
-  const id = route.query.seccion
-  if (!id) {
-    seccionActiva.value = null
-    filas.value = []
-    return
-  }
-  const encontrada = secciones.find((s) => s.id === id)
-  if (encontrada) {
-    seccionActiva.value = encontrada
-    refrescar()
-  }
+  const id = route.query.seccion || secciones[0]?.id
+  seleccionarSeccion(id, { syncRoute: !route.query.seccion })
 }
 
 watch(
   () => route.query.seccion,
-  () => aplicarQuery(),
+  (id) => {
+    if (!id) {
+      seleccionarSeccion(secciones[0]?.id)
+      return
+    }
+    if (id !== tabId.value) {
+      seleccionarSeccion(id, { syncRoute: false })
+    }
+  },
 )
 
 onMounted(aplicarQuery)
@@ -234,76 +385,59 @@ onMounted(aplicarQuery)
 
 <style scoped>
 .planta-page {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.planta-inner {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px 16px 24px;
+  box-sizing: border-box;
 }
 
 .text-slate {
   color: var(--hs-text);
 }
 
-.modulo-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 210px;
-  padding: 20px 18px 16px;
-  border: 1px solid var(--hs-border);
-  border-radius: 18px;
-  background: var(--hs-surface);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
-  cursor: pointer;
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
-}
-
-.modulo-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(38, 166, 154, 0.35);
-  box-shadow: 0 14px 32px rgba(38, 166, 154, 0.14);
-}
-
-.modulo-card:focus-visible {
-  outline: 2px solid var(--hs-primary);
-  outline-offset: 2px;
-}
-
-.modulo-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-}
-
-.modulo-title {
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: var(--hs-text);
-  line-height: 1.25;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.modulo-desc {
-  color: var(--hs-text-muted);
-  font-size: 0.88rem;
-  line-height: 1.45;
-  flex: 1;
-}
-
-.modulo-footer {
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--hs-border);
-}
-
 .listado-card {
+  width: 100%;
   overflow: hidden;
 }
 
+.planta-tabs {
+  min-height: 52px;
+  padding: 0 8px;
+  background: #fff;
+}
+
+.planta-tabs :deep(.q-tab) {
+  min-height: 52px;
+  padding: 0 14px;
+  text-transform: none;
+}
+
+.planta-tabs :deep(.q-tab__label) {
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+
+.planta-tabs :deep(.q-tab--active .q-tab__icon),
+.planta-tabs :deep(.q-tab--active .q-tab__label) {
+  color: var(--tab-accent, var(--hs-primary));
+}
+
+.toolbar {
+  width: 100%;
+  background: #fff;
+}
+
 .search-input {
-  max-width: 360px;
+  width: 100%;
+  max-width: 420px;
 }
 
 .search-input :deep(.q-field__control) {
@@ -311,19 +445,48 @@ onMounted(aplicarQuery)
   background: #f4f8fb;
 }
 
+.planta-table {
+  width: 100%;
+}
+
+.planta-table :deep(.q-table__middle) {
+  overflow-x: auto;
+}
+
 .planta-table :deep(thead tr th) {
   background: #f4f8fb;
   color: #475569;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-@media (max-width: 599px) {
-  .modulo-card {
-    min-height: 180px;
+.planta-table :deep(tbody tr) {
+  cursor: pointer;
+}
+
+.planta-table :deep(tbody td) {
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .planta-inner {
+    padding: 10px 10px 20px;
+  }
+
+  .page-actions {
+    justify-content: flex-start !important;
   }
 
   .search-input {
     max-width: 100%;
+  }
+
+  .planta-tabs :deep(.q-tab) {
+    padding: 0 10px;
+  }
+
+  .planta-tabs :deep(.q-tab__label) {
+    font-size: 0.75rem;
   }
 }
 </style>

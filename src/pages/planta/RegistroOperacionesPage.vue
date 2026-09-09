@@ -1,5 +1,6 @@
 <template>
-  <q-page class="registro-page q-pa-md">
+  <q-page class="registro-page">
+    <div class="registro-inner">
     <div class="page-top row items-start justify-between q-mb-md q-col-gutter-sm">
       <div class="col">
         <div class="row items-center q-gutter-sm">
@@ -17,7 +18,7 @@
       <div class="col-auto row q-gutter-sm">
         <q-btn flat no-caps label="Cancelar" color="grey-7" @click="volver" />
         <q-btn unelevated no-caps icon="save" label="Guardar" class="btn-gradient" :loading="guardando"
-          :disable="guardando" @click="guardar" />
+          :disable="guardando || cargando" @click="guardar" />
       </div>
     </div>
 
@@ -34,18 +35,18 @@
       </div>
 
       <div class="row q-col-gutter-md">
-        <div class="col-12 col-sm-4 col-md-2">
+        <div class="col-12 col-sm-6 col-md-3 col-lg-2">
           <q-input v-model="form.fecha" type="date" outlined dense label="Fecha" readonly disable
             class="input-calculado" />
         </div>
-        <div class="col-12 col-sm-4 col-md-2">
+        <div class="col-12 col-sm-6 col-md-3 col-lg-2">
           <q-input v-model="form.hora" outlined dense label="Hora (24h)" hint="Hora exacta del sistema" readonly disable
             class="input-calculado" />
         </div>
-        <div class="col-12 col-sm-4 col-md-3">
+        <div class="col-12 col-sm-6 col-md-3 col-lg-3">
           <q-input v-model="form.operador" outlined dense label="Operador" readonly disable class="input-calculado" />
         </div>
-        <div class="col-12 col-md-5">
+        <div class="col-12 col-sm-6 col-md-3 col-lg-5">
           <q-input v-model="form.observaciones" type="textarea" outlined dense autogrow label="Observaciones" />
         </div>
       </div>
@@ -53,7 +54,7 @@
 
     <!-- Caudal + Calidad lado a lado -->
     <div class="row q-col-gutter-md q-mb-md">
-      <div class="col-12 col-lg-7">
+      <div class="col-12 col-md-7 col-xl-8">
         <section class="hs-card form-section full-height">
           <div class="section-head row items-center q-mb-md">
             <div class="section-icon flex flex-center">
@@ -66,20 +67,20 @@
           </div>
 
           <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-12 col-sm-4">
+            <div class="col-12 col-sm-4 col-lg-3">
               <InputDecimal v-model="form.aduccion" :decimals="0" label="Aducción" :rules="[req]" />
             </div>
           </div>
 
           <div class="subsection-label q-mb-sm">A tratar</div>
           <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col">
+            <div class="col-12 col-sm-4">
               <InputDecimal v-model="form.tratarModulo500" :decimals="0" label="Módulo 500" :rules="[req]" />
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-4">
               <InputDecimal v-model="form.tratarModulo150" :decimals="0" label="Módulo 150" :rules="[req]" />
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-4">
               <InputDecimal :model-value="totalTratarCalc" :decimals="0" label="Total" readonly
                 input-class="input-total" />
             </div>
@@ -87,14 +88,14 @@
 
           <div class="subsection-label q-mb-sm">Producida</div>
           <div class="row q-col-gutter-sm">
-            <div class="col">
+            <div class="col-12 col-sm-4">
               <InputDecimal :model-value="producidaModulo500Calc" :decimals="0" label="Módulo 500" readonly
                 hint="Total − Módulo 150" input-class="input-calculado" />
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-4">
               <InputDecimal v-model="form.producidaModulo150" :decimals="0" label="Módulo 150" :rules="[req]" />
             </div>
-            <div class="col">
+            <div class="col-12 col-sm-4">
               <InputDecimal v-model="form.totalProducida" :decimals="0" label="Total" placeholder="Ingresa el total"
                 :rules="[req]" />
             </div>
@@ -102,7 +103,7 @@
         </section>
       </div>
 
-      <div class="col-12 col-lg-5">
+      <div class="col-12 col-md-5 col-xl-4">
         <section class="hs-card form-section full-height">
           <div class="section-head row items-center q-mb-md">
             <div class="section-icon flex flex-center">
@@ -115,15 +116,15 @@
           </div>
 
           <div class="row q-col-gutter-sm">
-            <div class="col-12 col-sm">
+            <div class="col-12 col-sm-4 col-md-12 col-lg-4">
               <InputDecimal v-model="form.turbiedadAguaCruda" :decimals="1" label="Turbiedad" suffix="UNT"
                 :rules="[req]" />
             </div>
-            <div class="col-12 col-sm">
+            <div class="col-12 col-sm-4 col-md-12 col-lg-4">
               <InputDecimal v-model="form.colorAparenteAguaCruda" :decimals="1" label="Color aparente" suffix="UPC"
                 :rules="[req]" />
             </div>
-            <div class="col-12 col-sm">
+            <div class="col-12 col-sm-4 col-md-12 col-lg-4">
               <InputDecimal v-model="form.phAguaCruda" :decimals="2" label="pH" :rules="[req]" />
             </div>
           </div>
@@ -160,27 +161,27 @@
       </div>
 
       <div class="row q-col-gutter-sm">
-        <div class="col-12 col-sm-3">
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
           <InputDecimal v-model="form.densidadPolicloruro" :decimals="2" label="Densidad" suffix="g/mL"
             :rules="[req]" />
         </div>
-        <div class="col-6 col-sm-3">
+        <div class="col-6 col-sm-6 col-md-4 col-lg-2">
           <InputDecimal v-model="form.descargaModulo500" :decimals="0" label="Descarga M500" suffix="mL/min"
             :rules="[req]" />
         </div>
-        <div class="col-6 col-sm-3">
+        <div class="col-6 col-sm-6 col-md-4 col-lg-2">
           <InputDecimal v-model="form.descargaModulo150" :decimals="0" label="Descarga M150" suffix="mL/min"
             :rules="[req]" />
         </div>
-        <div class="col-6 col-sm-3">
+        <div class="col-6 col-sm-6 col-md-4 col-lg-2">
           <InputDecimal :model-value="descargaTotalCalc" :decimals="0" label="Descarga total" suffix="mL/min" readonly
             hint="Módulo 500 + Módulo 150" input-class="input-calculado" />
         </div>
-        <div class="col-6 col-sm-6">
+        <div class="col-6 col-sm-6 col-md-4 col-lg-2">
           <InputDecimal :model-value="descargaGMinCalc" :decimals="0" label="g/min" suffix="g/min" readonly
             hint="Descarga Total × Densidad" input-class="input-calculado" />
         </div>
-        <div class="col-12 col-sm-6">
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
           <InputDecimal :model-value="descargaKgHCalc" :decimals="1" label="kg/h" suffix="kg/h" readonly
             hint="g/min × 60 / 1000" input-class="input-calculado" />
         </div>
@@ -189,29 +190,29 @@
 
     <!-- Cal + Cloro lado a lado -->
     <div class="row q-col-gutter-md q-mb-md">
-      <div class="col-12 col-lg-7">
+      <div class="col-12 col-lg-8">
         <section class="hs-card form-section full-height">
           <div class="insumo-title q-mb-md">Cal hidratada</div>
           <div class="row q-col-gutter-sm">
-            <div class="col-12 col-sm-6 col-md-4">
+            <div class="col-12 col-sm-6 col-md-4 col-xl-2">
               <InputDecimal :model-value="calDosisCaoh2Calc" :decimals="1" label="Dosis como Ca(OH)₂" suffix="mg/L"
                 readonly disable hint="(Descarga / Aducción) × (1000/60) × Densidad × Lechada × Pureza"
                 input-class="input-calculado" />
             </div>
-            <div class="col-6 col-sm-6 col-md-4">
+            <div class="col-6 col-sm-6 col-md-4 col-xl-2">
               <InputDecimal v-model="form.calPorcentajeLechada" :decimals="1" label="(% p/v lechada)" suffix="%"
                 :rules="[req]" />
             </div>
-            <div class="col-6 col-sm-6 col-md-4">
+            <div class="col-6 col-sm-6 col-md-4 col-xl-2">
               <InputDecimal v-model="form.calPureza" :decimals="1" label="% Pureza Ca(OH)₂" suffix="%" :rules="[req]" />
             </div>
-            <div class="col-6 col-sm-6 col-md-4">
+            <div class="col-6 col-sm-6 col-md-4 col-xl-2">
               <InputDecimal v-model="form.calDensidad" :decimals="2" label="Densidad" suffix="g/mL" :rules="[req]" />
             </div>
-            <div class="col-6 col-sm-6 col-md-4">
+            <div class="col-6 col-sm-6 col-md-4 col-xl-2">
               <InputDecimal v-model="form.calDescarga" :decimals="0" label="Descarga" suffix="mL/min" :rules="[req]" />
             </div>
-            <div class="col-12 col-sm-6 col-md-4">
+            <div class="col-12 col-sm-6 col-md-4 col-xl-2">
               <InputDecimal :model-value="calKgHCalc" :decimals="1" label="Ca(OH)₂" suffix="kg/h" readonly disable
                 hint="Densidad × Descarga × (60/1000) × Lechada" input-class="input-calculado" />
             </div>
@@ -219,22 +220,22 @@
         </section>
       </div>
 
-      <div class="col-12 col-lg-5">
+      <div class="col-12 col-lg-4">
         <section class="hs-card form-section full-height">
           <div class="insumo-title q-mb-md">Cloro gaseoso</div>
           <div class="row q-col-gutter-sm">
-            <div class="col-12 col-sm-6 col-md">
+            <div class="col-12 col-sm-6 col-lg-6">
               <InputDecimal :model-value="cloroMgLCalc" :decimals="2" label="mg/L" suffix="mg/L" readonly disable
                 hint="(Lb/día ÷ Producida) × (453.6 × 1000 / 86400)" input-class="input-calculado" />
             </div>
-            <div class="col-12 col-sm-6 col-md">
+            <div class="col-12 col-sm-6 col-lg-6">
               <InputDecimal v-model="form.cloroLbDia" :decimals="0" label="lb/día" suffix="lb/día" :rules="[req]" />
             </div>
-            <div class="col-12 col-sm-6 col-md">
+            <div class="col-12 col-sm-6 col-lg-6">
               <InputDecimal :model-value="cloroKgHCalc" :decimals="1" label="kg/h" suffix="kg/h" readonly disable
                 hint="Lb/día × 0.4536 / 24" input-class="input-calculado" />
             </div>
-            <div class="col-12 col-sm-6 col-md">
+            <div class="col-12 col-sm-6 col-lg-6">
               <InputDecimal v-model="form.cloroCrl" :decimals="1" label="CRL" suffix="mg/L" :rules="[req]" />
             </div>
           </div>
@@ -245,7 +246,8 @@
     <div class="row justify-end q-gutter-sm q-mt-sm q-mb-lg">
       <q-btn flat no-caps label="Cancelar" color="grey-7" @click="volver" />
       <q-btn unelevated no-caps icon="save" label="Guardar" class="btn-gradient" :loading="guardando"
-        :disable="guardando" @click="guardar" />
+        :disable="guardando || cargando" @click="guardar" />
+    </div>
     </div>
   </q-page>
 </template>
@@ -255,8 +257,12 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Utils from '@/Commons/Utils'
 import { api } from '@/boot/axios'
-import { guardarRegistro, obtenerRegistro } from '@/Commons/plantaStorage'
-import { construirPaqueteRegistroDiario } from '@/Commons/registroDiarioOperacion'
+import { guardarRegistro } from '@/Commons/plantaStorage'
+import {
+  construirPaqueteRegistroDiario,
+  mapearRegistroDiarioApi,
+  traerInfoRegistroDiario,
+} from '@/Commons/registroDiarioOperacion'
 import { obtenerIdPlantaTratamiento } from '@/config/app'
 import {
   crearRegistroOperacionVacio,
@@ -284,6 +290,7 @@ const router = useRouter()
 const form = reactive(crearRegistroOperacionVacio())
 const esEdicion = ref(false)
 const guardando = ref(false)
+const cargando = ref(false)
 const usuarioSesion = ref(null)
 
 const nombreOperadorSesion = (usuario) => {
@@ -319,6 +326,22 @@ const volver = () => {
   router.push({ path: '/planta', query: { seccion: 'operaciones' } })
 }
 
+const aplicarRegistroApi = (dato, idRegistro, usuario, operador, idPlanta) => {
+  const mapeado = mapearRegistroDiarioApi(dato, idRegistro)
+  if (!mapeado) return false
+
+  Object.assign(form, {
+    ...crearRegistroOperacionVacio(operador),
+    ...mapeado,
+    fecha: mapeado.fecha || fechaHoyLocal(),
+    hora: mapeado.hora || horaExactaActual(),
+    operador: mapeado.operador || operador,
+    idUsuario: mapeado.idUsuario ?? usuario.IdUsuario ?? null,
+    idPlantaTratamiento: mapeado.idPlantaTratamiento ?? idPlanta,
+  })
+  return true
+}
+
 const cargar = async () => {
   const usuario = await Utils.datoUsuario()
   if (!usuario) {
@@ -343,23 +366,27 @@ const cargar = async () => {
     return
   }
 
-  const existente = obtenerRegistro('operaciones', id)
-  if (!existente) {
-    Utils.notificacion('No se encontró el registro', false)
-    volver()
-    return
-  }
-
   esEdicion.value = true
-  Object.assign(form, {
-    ...crearRegistroOperacionVacio(operador),
-    ...existente,
-    fecha: existente.fecha || fechaHoyLocal(),
-    hora: normalizarHoraExacta(existente.hora),
-    operador: existente.operador || operador,
-    idUsuario: existente.idUsuario ?? usuario.IdUsuario ?? null,
-    idPlantaTratamiento: existente.idPlantaTratamiento ?? idPlanta,
-  })
+  cargando.value = true
+  Utils.loadingNotify(true, 'Cargando registro...')
+  try {
+    const dato = await traerInfoRegistroDiario(id)
+    const ok = aplicarRegistroApi(dato, id, usuario, operador, idPlanta)
+    if (!ok) {
+      Utils.notificacion('No se encontró el registro', false)
+      volver()
+    }
+  } catch (error) {
+    console.error('Error al cargar registro diario:', error)
+    Utils.notificacion(
+      error.response?.data?.Mensaje || error.message || 'No se pudo cargar el registro.',
+      false,
+    )
+    volver()
+  } finally {
+    cargando.value = false
+    Utils.loadingNotify(false, '')
+  }
 }
 
 const armarPayloadLocal = () => ({
@@ -377,15 +404,10 @@ const armarPayloadLocal = () => ({
   calKgH: calcCalKgH(form),
   cloroMgL: calcCloroMgL(form),
   cloroKgH: calcCloroKgH(form),
-  Cloro : {
-    MgL: form.cloroLbDia,
-    KgH: form.cloroCrl,
-  },
   idUsuario: form.idUsuario ?? usuarioSesion.value?.IdUsuario ?? null,
   idPlantaTratamiento:
     form.idPlantaTratamiento ?? obtenerIdPlantaTratamiento(usuarioSesion.value),
 })
-
 
 const guardar = async () => {
   if (!form.fecha || !form.hora || !form.operador?.trim()) {
@@ -412,9 +434,10 @@ const guardar = async () => {
 
     if (!ok) return
 
-    // Conserva copia local para el listado
     if (response.data?.Dato?.IdRegistro != null) {
       local.id = response.data.Dato.IdRegistro
+    } else if (form.id != null) {
+      local.id = form.id
     }
     guardarRegistro('operaciones', local)
     volver()
@@ -441,8 +464,21 @@ onMounted(cargar)
 
 <style scoped>
 .registro-page {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.registro-inner {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px 16px 24px;
+  box-sizing: border-box;
+}
+
+.page-top {
+  width: 100%;
 }
 
 .text-slate {
@@ -450,7 +486,7 @@ onMounted(cargar)
 }
 
 .form-section {
-  padding: 18px 18px 20px;
+  padding: 16px 18px 18px;
 }
 
 .full-height {
@@ -525,6 +561,10 @@ onMounted(cargar)
 }
 
 @media (max-width: 599px) {
+  .registro-inner {
+    padding: 10px 10px 20px;
+  }
+
   .form-section {
     padding: 14px;
   }

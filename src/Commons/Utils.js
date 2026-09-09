@@ -28,18 +28,34 @@ const Utils = {
     }
   },
 
-  async confirmarAccion(mensaje, titulo = 'Confirmar') {
+  async confirmarAccion(mensaje, titulo = 'Confirmar', opciones = {}) {
     return new Promise((resolve) => {
       Dialog.create({
         title: titulo || 'Confirmar',
         message: mensaje,
+        html: opciones.html === true,
         cancel: { label: 'Cancelar', flat: true, color: 'grey-7' },
-        ok: { label: 'Aceptar', unelevated: true, color: 'primary' },
+        ok: { label: opciones.okLabel || 'Aceptar', unelevated: true, color: 'primary' },
         persistent: true,
       })
         .onOk(() => resolve(true))
         .onCancel(() => resolve(false))
         .onDismiss(() => resolve(false))
+    })
+  },
+
+  /** Alerta informativa (solo Aceptar). */
+  async alerta(mensaje, titulo = 'Aviso', opciones = {}) {
+    return new Promise((resolve) => {
+      Dialog.create({
+        title: titulo || 'Aviso',
+        message: mensaje,
+        html: opciones.html === true,
+        ok: { label: opciones.okLabel || 'Entendido', unelevated: true, color: 'primary' },
+        persistent: true,
+      })
+        .onOk(() => resolve(true))
+        .onDismiss(() => resolve(true))
     })
   },
 

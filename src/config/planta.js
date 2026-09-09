@@ -36,11 +36,36 @@ export const HORAS_LECTURA_MACROMEDIDOR = {
   acumulado3: '22:00',
 }
 
+export const CAMPOS_LECTURA = ['acumulado1', 'acumulado2', 'acumulado3']
+
 /** En nuevo registro solo se captura la de las 6:00. */
 export const CAMPO_LECTURA_NUEVO = 'acumulado1'
 
 export function horaLecturaNuevoRegistro() {
   return HORAS_LECTURA_MACROMEDIDOR[CAMPO_LECTURA_NUEVO]
+}
+
+/** True si la lectura ya fue capturada (número, 0 o "Sin Dato"). */
+export function lecturaYaCapturada(valor) {
+  if (valor === null || valor === undefined) return false
+  if (typeof valor === 'string' && valor.trim() === '') return false
+  return true
+}
+
+/**
+ * Siguiente turno a capturar en el registro (una lectura a la vez).
+ * Lectura1 completa → Lectura2; Lectura2 completa → Lectura3;
+ * las tres completas → null (solo consulta).
+ */
+export function siguienteCampoLecturaRegistro(medidores) {
+  const lista = Array.isArray(medidores) ? medidores : []
+  if (!lista.length) return CAMPO_LECTURA_NUEVO
+
+  for (const campo of CAMPOS_LECTURA) {
+    const completa = lista.every((m) => m?.lecturasBloqueadas?.[campo] === true)
+    if (!completa) return campo
+  }
+  return null
 }
 
 /** Mapea la hora del sistema al turno de lectura más cercano. */
@@ -66,22 +91,63 @@ export function esLecturaNumerica(valor) {
 }
 
 /**
- * m³/día = último acumulado − primer acumulado (consumo del periodo).
- * Si hay "Sin Dato", faltan valores o no hay cambio → null.
+ * Fórmula m³/día (Excel/C# CalcularFormula(c15, c12, rangoD)):
+ * c15 = LecturaAnterior (lectura3Anterior), c12 = Lectura3 (acumulado3).
+ * - Si ambos numéricos y C12 ≤ C15 ≤ C12×1.5 → delta (C15 − C12)
+ * - Si no cumple el rango → modo 'promedio' (PROMEDIO.SI vía backend)
+ * - Si falta alguno → vacío
+ *
+ * @returns {{ modo: 'delta'|'promedio'|'vacio', valor: number|null }}
+ */
+export function evaluarFormulaM3Dia(lectura3Anterior, lectura3) {
+  // ESNUMERO(C15) y ESNUMERO(C12)
+  if (esSinDato(lectura3Anterior) || esSinDato(lectura3)) {
+    return { modo: 'vacio', valor: null }
+  }
+  if (!esLecturaNumerica(lectura3Anterior) || !esLecturaNumerica(lectura3)) {
+    return { modo: 'vacio', valor: null }
+  }
+  const v15 = Number(lectura3Anterior) // C15 = LecturaAnterior
+  const v12 = Number(lectura3) // C12 = Lectura3
+  // Y(C12 <= C15, C15 <= C12 * 1.5) → C15 - C12
+  if (v12 <= v15 && v15 <= v12 * 1.5) {
+    return { modo: 'delta', valor: v15 - v12 }
+  }
+  // else → PROMEDIO.SI(rangoD, ">0") en backend
+  return { modo: 'promedio', valor: null }
+}
+
+/** Normaliza M3Dia / m3Dia del API a número o null. */
+export function parseM3DiaApi(valor) {
+  if (valor == null || valor === '') return null
+  if (esSinDato(valor)) return null
+  const n = Number(valor)
+  return Number.isNaN(n) ? null : n
+}
+
+/**
+ * m³/día sync: prioriza m3Dia ya cargado (API M3Dia o cálculo previo);
+ * si no, aplica fórmula local (delta / promedio cacheado).
  */
 export function calcM3DiaMacromedidor(medidor) {
-  const a1 = medidor?.acumulado1
-  const a3 = medidor?.acumulado3
-  if (esSinDato(a1) || esSinDato(a3)) return null
-  if (!esLecturaNumerica(a1) || !esLecturaNumerica(a3)) return null
-  const delta = Number(a3) - Number(a1)
-  if (Number.isNaN(delta) || delta === 0) return null
-  return delta
+  const desdeApi = parseM3DiaApi(medidor?.m3Dia)
+  if (desdeApi != null) return desdeApi
+
+  const lectura3 =
+    medidor?.acumulado3 ?? medidor?.Lectura3 ?? medidor?.lectura3 ?? null
+  const lecturaAnterior =
+    medidor?.lectura3Anterior ??
+    medidor?.LecturaAnterior ??
+    medidor?.lecturaAnterior ??
+    null
+  const r = evaluarFormulaM3Dia(lecturaAnterior, lectura3)
+  if (r.modo === 'delta') return r.valor
+  return null
 }
 
 /** Indica si el m³/día debe mostrarse como Sin Dato. */
 export function m3DiaEsSinDato(medidor) {
-  return esSinDato(medidor?.acumulado1) || esSinDato(medidor?.acumulado3)
+  return esSinDato(medidor?.acumulado3) || esSinDato(medidor?.lectura3Anterior)
 }
 
 export function crearMedidorVacio(def = {}) {
@@ -90,22 +156,164 @@ export function crearMedidorVacio(def = {}) {
     def.IdMacroMedidor ??
     def.IdMacromedidor ??
     null
+  const m3Dia = parseM3DiaApi(def.m3Dia ?? def.M3Dia)
 
   return {
     idMacromedidor: idMacro,
+    /** PK del detalle en el registro (para actualizar Lectura2/3). */
+    idRegistroMacroMedidor:
+      def.idRegistroMacroMedidor ??
+      def.IdRegistroMacroMedidor ??
+      null,
     codigo: def.codigo ?? def.Codigo ?? '',
     nombre: def.nombre ?? def.Nombre ?? def.NombreMacromedidor ?? '',
     acumulado1: null,
     acumulado2: null,
     acumulado3: null,
-    /** Lectura 3 del día anterior (solo consulta, no editable). */
+    /** Lectura del día anterior (solo consulta, no editable). API: LecturaAnterior. */
     lectura3Anterior:
       def.lectura3Anterior ??
+      def.LecturaAnterior ??
+      def.lecturaAnterior ??
       def.Lectura3Anterior ??
       def.Acumulado3Anterior ??
       def.UltimaLectura3 ??
       null,
-    m3Dia: null,
+    /** m³/día del registro (API: M3Dia). */
+    m3Dia,
+    m3DiaFuente: m3Dia != null ? 'api' : null,
+    lecturasBloqueadas: {
+      acumulado1: false,
+      acumulado2: false,
+      acumulado3: false,
+    },
+  }
+}
+
+function extraerListaMacromedidores(dato) {
+  if (Array.isArray(dato)) return dato
+  if (!dato || typeof dato !== 'object') return []
+  if (Array.isArray(dato.Macromedidores)) return dato.Macromedidores
+  if (Array.isArray(dato.Registros)) return dato.Registros
+  if (Array.isArray(dato.Medidores)) return dato.Medidores
+  if (Array.isArray(dato.Lecturas)) return dato.Lecturas
+  if (Array.isArray(dato.Detalle)) return dato.Detalle
+  if (Array.isArray(dato.Dato)) return dato.Dato
+  return []
+}
+
+function lecturasDeItemApi(item) {
+  const src =
+    item?.Lecturas && typeof item.Lecturas === 'object' && !Array.isArray(item.Lecturas)
+      ? item.Lecturas
+      : item
+  const lecturas = {
+    acumulado1: src.Lectura1 ?? src.Acumulado1 ?? src.lectura1 ?? null,
+    acumulado2: src.Lectura2 ?? src.Acumulado2 ?? src.lectura2 ?? null,
+    acumulado3: src.Lectura3 ?? src.Acumulado3 ?? src.lectura3 ?? null,
+  }
+
+  const unica = src.Lectura ?? src.lectura ?? null
+  const yaTieneSlot =
+    lecturaYaCapturada(lecturas.acumulado1) ||
+    lecturaYaCapturada(lecturas.acumulado2) ||
+    lecturaYaCapturada(lecturas.acumulado3)
+  if (!yaTieneSlot && lecturaYaCapturada(unica)) {
+    const hora = String(src.Hora ?? src.hora ?? item?.Hora ?? item?.hora ?? '')
+    if (hora.includes('14')) lecturas.acumulado2 = unica
+    else if (hora.includes('22')) lecturas.acumulado3 = unica
+    else lecturas.acumulado1 = unica
+  }
+
+  return lecturas
+}
+
+function fusionarMedidoresPorId(medidores) {
+  const mapa = new Map()
+  for (const m of medidores) {
+    const key =
+      m.idMacromedidor != null && m.idMacromedidor !== ''
+        ? `id:${m.idMacromedidor}`
+        : m.codigo
+          ? `cod:${m.codigo}`
+          : `i:${mapa.size}`
+    const prev = mapa.get(key)
+    if (!prev) {
+      mapa.set(key, {
+        ...m,
+        lecturasBloqueadas: { ...(m.lecturasBloqueadas || {}) },
+      })
+      continue
+    }
+    for (const campo of ['acumulado1', 'acumulado2', 'acumulado3']) {
+      if (lecturaYaCapturada(m[campo])) {
+        prev[campo] = m[campo]
+        prev.lecturasBloqueadas[campo] = true
+      }
+    }
+    if (!prev.nombre && m.nombre) prev.nombre = m.nombre
+    if (prev.lectura3Anterior == null && m.lectura3Anterior != null) {
+      prev.lectura3Anterior = m.lectura3Anterior
+    }
+    if (prev.m3Dia == null && m.m3Dia != null) {
+      prev.m3Dia = m.m3Dia
+      prev.m3DiaFuente = m.m3DiaFuente ?? 'api'
+    }
+    if (prev.idRegistroMacroMedidor == null && m.idRegistroMacroMedidor != null) {
+      prev.idRegistroMacroMedidor = m.idRegistroMacroMedidor
+    }
+  }
+  return [...mapa.values()]
+}
+
+/** Macromedidor con lecturas 1..3 y bloqueo de las ya capturadas. */
+export function mapearMedidorConLecturas(item) {
+  const lecturas = lecturasDeItemApi(item)
+  const idMacro =
+    item.IdMacroMedidor ??
+    item.IdMacromedidor ??
+    item.idMacromedidor ??
+    null
+  const idRegistroMacro =
+    item.IdRegistroMacroMedidor ??
+    item.idRegistroMacroMedidor ??
+    // Si viene Id del detalle y ya hay IdMacroMedidor, Id es el PK del registro.
+    (idMacro != null && item.Id != null ? item.Id : null) ??
+    (idMacro != null && item.id != null ? item.id : null) ??
+    null
+
+  const m3Dia = parseM3DiaApi(item.M3Dia ?? item.m3Dia)
+
+  const medidor = crearMedidorVacio({
+    idMacromedidor: idMacro ?? (idRegistroMacro == null ? item.Id ?? item.id ?? null : null),
+    idRegistroMacroMedidor: idRegistroMacro,
+    codigo: item.Codigo ?? item.codigo ?? '',
+    nombre:
+      item.Nombre ??
+      item.NombreMacromedidor ??
+      item.nombre ??
+      item.Codigo ??
+      'Macromedidor',
+    lectura3Anterior:
+      item.LecturaAnterior ??
+      item.lecturaAnterior ??
+      item.Lectura3Anterior ??
+      item.lectura3Anterior ??
+      null,
+    m3Dia,
+    M3Dia: m3Dia,
+  })
+
+  return {
+    ...medidor,
+    ...lecturas,
+    m3Dia,
+    m3DiaFuente: m3Dia != null ? 'api' : medidor.m3DiaFuente,
+    lecturasBloqueadas: {
+      acumulado1: lecturaYaCapturada(lecturas.acumulado1),
+      acumulado2: lecturaYaCapturada(lecturas.acumulado2),
+      acumulado3: lecturaYaCapturada(lecturas.acumulado3),
+    },
   }
 }
 
@@ -137,6 +345,8 @@ export function mapearMacromedidoresApi(lista) {
         item.Codigo ??
         'Macromedidor',
       lectura3Anterior:
+        item.LecturaAnterior ??
+        item.lecturaAnterior ??
         item.Lectura3Anterior ??
         item.Acumulado3Anterior ??
         item.UltimaLectura3 ??
@@ -193,26 +403,21 @@ export function mapearRegistrosMacromedidoresApi(lista) {
       []
 
     const medidores = (Array.isArray(registros) ? registros : []).map((r) =>
-      crearMedidorVacio({
-        idMacromedidor:
-          r.IdMacroMedidor ?? r.IdMacromedidor ?? r.idMacromedidor ?? r.Id ?? null,
-        codigo: r.Codigo ?? r.codigo ?? '',
-        nombre: r.Nombre ?? r.NombreMacromedidor ?? r.nombre ?? r.Codigo ?? 'Macromedidor',
-        lectura3Anterior: r.Lectura3Anterior ?? r.lectura3Anterior ?? null,
-      }),
-    ).map((m, i) => {
-      const src = registros[i] || {}
-      return {
-        ...m,
-        acumulado1: src.Lectura1 ?? src.Acumulado1 ?? src.lectura1 ?? m.acumulado1,
-        acumulado2: src.Lectura2 ?? src.Acumulado2 ?? src.lectura2 ?? m.acumulado2,
-        acumulado3: src.Lectura3 ?? src.Acumulado3 ?? src.lectura3 ?? m.acumulado3,
-      }
-    })
+      mapearMedidorConLecturas(r),
+    )
+
+    const fechaRaw =
+      item.FechaC ??
+      item.fechaC ??
+      registros[0]?.FechaC ??
+      registros[0]?.fechaC ??
+      item.Fecha ??
+      item.fecha ??
+      null
 
     return {
       id: item.IdRegistro ?? item.Id ?? item.id ?? idx + 1,
-      fecha: item.Fecha ?? item.fecha ?? null,
+      fecha: soloFecha(fechaRaw),
       hora: item.Hora ?? item.hora ?? null,
       idUsuario: item.IdUsuario ?? item.idUsuario ?? null,
       idPlantaTratamiento: item.IdPlantaTratamiento ?? item.idPlantaTratamiento ?? null,
@@ -221,6 +426,36 @@ export function mapearRegistrosMacromedidoresApi(lista) {
       raw: item,
     }
   })
+}
+
+/**
+ * Normaliza la respuesta de {idRegistro}/info-registro-mcm
+ * (macromedidores del registro con Lectura1..3 y M3Dia).
+ */
+export function mapearInfoRegistroMcmApi(dato, idRegistro = null) {
+  const contenedor = dato && !Array.isArray(dato) ? dato : {}
+  const lista = extraerListaMacromedidores(dato)
+  const medidores = fusionarMedidoresPorId(lista.map((item) => mapearMedidorConLecturas(item)))
+  const fechaRaw =
+    contenedor.FechaC ??
+    contenedor.fechaC ??
+    lista[0]?.FechaC ??
+    lista[0]?.fechaC ??
+    contenedor.Fecha ??
+    contenedor.fecha ??
+    null
+
+  return {
+    id: contenedor.IdRegistro ?? contenedor.Id ?? contenedor.id ?? idRegistro,
+    fecha: soloFecha(fechaRaw),
+    hora: contenedor.Hora ?? contenedor.hora ?? lista[0]?.Hora ?? lista[0]?.hora ?? null,
+    idUsuario: contenedor.IdUsuario ?? contenedor.idUsuario ?? null,
+    idPlantaTratamiento:
+      contenedor.IdPlantaTratamiento ?? contenedor.idPlantaTratamiento ?? null,
+    medidores,
+    cantidadMedidores: medidores.length,
+    raw: dato,
+  }
 }
 
 export function crearRegistroMacromedidoresVacio({
@@ -241,7 +476,14 @@ export function crearRegistroMacromedidoresVacio({
 
 export const COLUMNAS = {
   macromedidores: [
-    { name: 'fecha', label: 'Fecha', field: 'fecha', align: 'left', sortable: true },
+    {
+      name: 'fecha',
+      label: 'Fecha',
+      field: 'fecha',
+      align: 'left',
+      sortable: true,
+      format: (val) => soloFecha(val) || '—',
+    },
     { name: 'hora', label: 'Hora', field: 'hora', align: 'left', sortable: true },
     {
       name: 'medidores',
@@ -423,6 +665,57 @@ export function fechaHoyLocal() {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/** Extrae solo la fecha (YYYY-MM-DD) de FechaC u otro DateTime. */
+export function soloFecha(valor) {
+  if (valor == null || valor === '') return null
+  const s = String(valor).trim()
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  // dd/mm/yyyy o dd-mm-yyyy
+  const dmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/)
+  if (dmy) {
+    const day = String(dmy[1]).padStart(2, '0')
+    const m = String(dmy[2]).padStart(2, '0')
+    return `${dmy[3]}-${m}-${day}`
+  }
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return null
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** True si dos valores de fecha corresponden al mismo día calendario. */
+export function esMismaFechaDia(fechaA, fechaB = fechaHoyLocal()) {
+  const a = soloFecha(fechaA)
+  const b = soloFecha(fechaB)
+  return a != null && b != null && a === b
+}
+
+/** Obtiene la fecha usable de un registro de macromedidores (mapeado o raw API). */
+export function fechaDeRegistroMacromedidor(registro) {
+  if (!registro || typeof registro !== 'object') return null
+  return (
+    registro.fecha ??
+    registro.Fecha ??
+    registro.FechaC ??
+    registro.fechaC ??
+    registro.raw?.FechaC ??
+    registro.raw?.fechaC ??
+    registro.raw?.Fecha ??
+    registro.raw?.fecha ??
+    null
+  )
+}
+
+/** Busca el registro de macromedidores cuya fecha coincide con el día indicado. */
+export function buscarRegistroMacromedidorDelDia(lista, fechaRef = fechaHoyLocal()) {
+  return (
+    (lista || []).find((r) => esMismaFechaDia(fechaDeRegistroMacromedidor(r), fechaRef)) || null
+  )
 }
 
 /** Hora exacta en formato 24h (1:30 → 01:00) */

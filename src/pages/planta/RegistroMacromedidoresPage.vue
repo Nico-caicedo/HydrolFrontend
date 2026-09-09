@@ -6,7 +6,7 @@
           <q-btn flat round dense icon="arrow_back" color="primary" aria-label="Volver al listado" @click="volver" />
           <div>
             <div class="text-h5 text-weight-bold text-slate">
-              {{ esEdicion ? 'Editar registro' : 'Nuevo registro' }}
+              {{ tituloPagina }}
             </div>
             <div class="text-body2 text-blue-grey-6">
               Registro de macromedidores — lecturas 6:00, 14:00 y 22:00
@@ -17,6 +17,7 @@
       <div class="col-auto row q-gutter-sm">
         <q-btn flat no-caps label="Cancelar" color="grey-7" @click="volver" />
         <q-btn
+          v-if="!registroSoloLectura && !cargandoMedidores"
           unelevated
           no-caps
           icon="save"
@@ -38,18 +39,22 @@
             </div>
             <div>
               <div class="section-title">Macromedidores</div>
-              <div class="section-sub">
-                {{
-                  esEdicion
-                    ? 'Acumulado (6:00 / 14:00 / 22:00) y m³/día calculado'
-                    : 'Nuevo registro: solo se captura la lectura de las 6:00'
-                }}
-              </div>
+              <div class="section-sub">{{ textoAyuda }}</div>
             </div>
           </div>
         </div>
         <div class="col-12 col-sm-4 col-md-3 col-lg-2">
-          <q-input v-model="form.fecha" type="date" outlined dense label="Fecha" :rules="[req]" />
+          <q-input
+            v-model="form.fecha"
+            type="date"
+            outlined
+            dense
+            label="Fecha"
+            :rules="[req]"
+            :readonly="esEdicion"
+            :disable="esEdicion"
+            :class="{ 'input-calculado': esEdicion }"
+          />
         </div>
       </div>
 
@@ -63,12 +68,12 @@
                 v-for="campo in camposLectura"
                 :key="campo"
                 class="lectura-wrap"
-                :class="{ 'lectura-wrap--bloqueada': !lecturaEditable(campo) }"
+                :class="{ 'lectura-wrap--bloqueada': !lecturaEditable(campo, medidor) }"
               >
                 <div class="lectura-label-row">
                   <span class="input-decimal__label">{{ etiquetasLectura[campo] }}</span>
                   <button
-                    v-if="lecturaEditable(campo) && !esSinDato(medidor[campo])"
+                    v-if="lecturaEditable(campo, medidor) && !esSinDato(medidor[campo])"
                     type="button"
                     class="btn-marcar-sd"
                     title="Marcar como Sin Dato"
@@ -83,12 +88,12 @@
                     v-show="!esSinDato(medidor[campo])"
                     v-model="medidor[campo]"
                     :decimals="0"
-                    :readonly="!lecturaEditable(campo)"
-                    :disable="!lecturaEditable(campo)"
-                    :input-class="lecturaEditable(campo) ? '' : 'input-calculado'"
+                    :readonly="!lecturaEditable(campo, medidor)"
+                    :disable="!lecturaEditable(campo, medidor)"
+                    :input-class="lecturaEditable(campo, medidor) ? '' : 'input-calculado'"
                   />
                   <button
-                    v-if="esSinDato(medidor[campo]) && lecturaEditable(campo)"
+                    v-if="esSinDato(medidor[campo]) && lecturaEditable(campo, medidor)"
                     type="button"
                     class="sin-dato-overlay"
                     title="Clic para capturar lectura"
@@ -120,7 +125,8 @@
             <div class="mm-col mm-col--calc">
               <div class="mm-col__head">m³/día</div>
               <div class="mm-calc">
-                {{ formatearM3(medidor) }}
+                <q-spinner v-if="medidor.m3DiaCargando" color="primary" size="22px" />
+                <template v-else>{{ formatearM3(medidor) }}</template>
               </div>
             </div>
           </div>
@@ -139,6 +145,7 @@
     <div class="row justify-end q-gutter-sm q-mt-sm q-mb-lg">
       <q-btn flat no-caps label="Cancelar" color="grey-7" @click="volver" />
       <q-btn
+        v-if="!registroSoloLectura && !cargandoMedidores"
         unelevated
         no-caps
         icon="save"
@@ -153,24 +160,37 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Dialog } from 'quasar'
 import Utils from '@/Commons/Utils'
 import { api } from '@/boot/axios'
 import { guardarRegistro, obtenerRegistro, listarRegistros } from '@/Commons/plantaStorage'
-import { construirPaqueteMacromedidores } from '@/Commons/registroMacromedidores'
+import {
+  aplicarCeroEnCamposVacios,
+  aplicarM3DiaMedidores,
+  construirPaqueteMacromedidores,
+  construirPaqueteMacromedidoresActualizar,
+  medidoresConLecturaCero,
+} from '@/Commons/registroMacromedidores'
 import { obtenerIdPlantaTratamiento } from '@/config/app'
 import {
   calcM3DiaMacromedidor,
-  CAMPO_LECTURA_NUEVO,
+  CAMPOS_LECTURA,
   crearRegistroMacromedidoresVacio,
   esSinDato,
   fechaHoyLocal,
+  HORAS_LECTURA_MACROMEDIDOR,
   horaLecturaNuevoRegistro,
   horaLecturaSegunSistema,
+  mapearInfoRegistroMcmApi,
   mapearMacromedidoresApi,
+  mapearRegistrosMacromedidoresApi,
   obtenerLectura3DiaAnterior,
+  siguienteCampoLecturaRegistro,
   SIN_DATO,
+  soloFecha,
+  TIPO_REGISTRO_PLANTA,
 } from '@/config/planta'
 import InputDecimal from '@/components/InputDecimal.vue'
 
@@ -182,7 +202,7 @@ const guardando = ref(false)
 const cargandoMedidores = ref(false)
 const usuarioSesion = ref(null)
 
-const camposLectura = ['acumulado1', 'acumulado2', 'acumulado3']
+const camposLectura = CAMPOS_LECTURA
 const etiquetasLectura = {
   acumulado1: 'Lectura 6:00',
   acumulado2: 'Lectura 14:00',
@@ -191,18 +211,71 @@ const etiquetasLectura = {
 
 const esEdicion = computed(() => route.params.id != null && route.params.id !== 'nuevo')
 
-const lecturaEditable = (campo) => {
-  if (esEdicion.value) return true
-  return campo === CAMPO_LECTURA_NUEVO
+const campoLecturaActivo = computed(() => siguienteCampoLecturaRegistro(form.medidores))
+const registroSoloLectura = computed(() => campoLecturaActivo.value == null)
+
+const tituloPagina = computed(() => {
+  if (registroSoloLectura.value) return 'Consultar registro'
+  return esEdicion.value ? 'Editar registro' : 'Nuevo registro'
+})
+
+const textoAyuda = computed(() => {
+  if (registroSoloLectura.value) return 'Registro completo — solo consulta'
+  if (campoLecturaActivo.value === 'acumulado2') {
+    return 'Lectura 1 completa — capture solo la lectura de las 14:00'
+  }
+  if (campoLecturaActivo.value === 'acumulado3') {
+    return 'Lectura 2 completa — capture solo la lectura de las 22:00'
+  }
+  return 'Solo se captura la lectura de las 6:00'
+})
+
+const lecturaEditable = (campo, medidor = null) => {
+  const activo = campoLecturaActivo.value
+  if (!activo || campo !== activo) return false
+  if (medidor?.lecturasBloqueadas?.[campo]) return false
+  return true
 }
 
 const req = (val) =>
   (val !== null && val !== undefined && String(val).trim() !== '') || 'Campo requerido'
 
 const formatearM3 = (medidor) => {
+  if (esSinDato(medidor?.acumulado3) || esSinDato(medidor?.lectura3Anterior)) return SIN_DATO
+  if (medidor?.m3Dia != null && medidor.m3Dia !== '') {
+    const n = Number(medidor.m3Dia)
+    if (!Number.isNaN(n)) return new Intl.NumberFormat('es-CO').format(n)
+  }
   const valor = calcM3DiaMacromedidor(medidor)
   if (valor == null) return '—'
   return new Intl.NumberFormat('es-CO').format(valor)
+}
+
+let timerM3 = null
+const recalcM3Habilitado = ref(false)
+const programarRecalculoM3 = () => {
+  if (!recalcM3Habilitado.value) return
+  clearTimeout(timerM3)
+  timerM3 = setTimeout(() => {
+    aplicarM3DiaMedidores(form.medidores).catch(() => {})
+  }, 350)
+}
+
+watch(
+  () =>
+    (form.medidores || []).map((m) => [
+      m.idMacromedidor,
+      m.acumulado3,
+      m.lectura3Anterior,
+    ]),
+  () => programarRecalculoM3(),
+  { deep: true },
+)
+
+/** Activa el watch de m³/día tras la carga inicial (evita pisar M3Dia del API). */
+const habilitarRecalcM3 = async () => {
+  await nextTick()
+  recalcM3Habilitado.value = true
 }
 
 const formatearLecturaAnterior = (valor) => {
@@ -255,6 +328,35 @@ const traerMacromedidores = async (idPlanta) => {
   }
 }
 
+const traerInfoRegistroMcm = async (idRegistro) => {
+  const response = await api.get(`operaciones-planta/${idRegistro}/info-registro-mcm`)
+  if (response.data?.IsExito === false) {
+    throw new Error(response.data?.Mensaje || 'No se pudo cargar el registro')
+  }
+  const dato = response.data?.Dato ?? response.data
+  return mapearInfoRegistroMcmApi(dato, idRegistro)
+}
+
+/** True si ya hay un registro de macromedidores con fecha de hoy. */
+const existeRegistroDelDia = async (idPlanta) => {
+  const tipo = TIPO_REGISTRO_PLANTA.macromedidores
+  const response = await api.get(`operaciones-planta/${idPlanta}/${tipo}/traer-registro`)
+  if (response.data?.IsExito === false) {
+    throw new Error(response.data?.Mensaje || 'No se pudieron validar los registros del día')
+  }
+  const dato = response.data?.Dato ?? response.data
+  const lista = mapearRegistrosMacromedidoresApi(dato)
+  const hoy = fechaHoyLocal()
+  return lista.some((r) => {
+    const fecha =
+      soloFecha(r?.fecha) ||
+      soloFecha(r?.raw?.FechaC) ||
+      soloFecha(r?.raw?.Fecha) ||
+      (typeof r?.fecha === 'string' ? r.fecha.slice(0, 10) : null)
+    return fecha === hoy
+  })
+}
+
 const cargar = async () => {
   const usuario = await Utils.datoUsuario()
   usuarioSesion.value = usuario
@@ -262,29 +364,79 @@ const cargar = async () => {
   const idUsuario = usuario?.IdUsuario ?? null
 
   if (esEdicion.value) {
-    const existente = obtenerRegistro('macromedidores', route.params.id)
-    if (!existente) {
-      Utils.notificacion('Registro no encontrado', false)
+    const idRegistro = route.params.id
+    const local = obtenerRegistro('macromedidores', idRegistro)
+    Utils.loadingNotify(true, 'Cargando registro...')
+    cargandoMedidores.value = true
+    try {
+      const info = await traerInfoRegistroMcm(idRegistro)
+      const fecha = info.fecha || local?.fecha || fechaHoyLocal()
+      Object.assign(form, {
+        ...crearRegistroMacromedidoresVacio({
+          idUsuario,
+          idPlantaTratamiento: idPlanta,
+          hora: info.hora || local?.hora || horaLecturaSegunSistema(),
+        }),
+        ...info,
+        id: info.id ?? idRegistro,
+        idUsuario: info.idUsuario ?? idUsuario,
+        idPlantaTratamiento: info.idPlantaTratamiento ?? idPlanta,
+        fecha,
+        hora: info.hora || local?.hora || horaLecturaSegunSistema(),
+        medidores: enriquecerLectura3Anterior(info.medidores || [], fecha),
+      })
+      const siguiente = siguienteCampoLecturaRegistro(form.medidores)
+      if (siguiente) form.hora = HORAS_LECTURA_MACROMEDIDOR[siguiente]
+      // Solo calcular localmente si el API no trajo M3Dia
+      const sinM3 = (form.medidores || []).filter(
+        (m) => m.m3Dia == null || m.m3Dia === '',
+      )
+      if (sinM3.length) {
+        await aplicarM3DiaMedidores(sinM3).catch(() => {})
+      }
+      await habilitarRecalcM3()
+    } catch (error) {
+      console.error('Error al traer info-registro-mcm:', error)
+      Utils.notificacion(
+        error.response?.data?.Mensaje || error.message || 'No se pudo cargar el registro.',
+        false,
+      )
+      volver()
+    } finally {
+      cargandoMedidores.value = false
+      Utils.loadingNotify(false, '')
+    }
+    return
+  }
+
+  Utils.loadingNotify(true, 'Validando registro del día...')
+  try {
+    if (await existeRegistroDelDia(idPlanta)) {
+      Utils.loadingNotify(false, '')
+      await new Promise((resolve) => {
+        Dialog.create({
+          title: 'Registro diario',
+          message:
+            'Solo se permite un registro diario de macromedidores. Ya existe un registro para la fecha actual.',
+          ok: { label: 'Entendido', unelevated: true, color: 'primary' },
+          persistent: true,
+        })
+          .onOk(() => resolve())
+          .onDismiss(() => resolve())
+      })
       volver()
       return
     }
-    Object.assign(form, {
-      ...crearRegistroMacromedidoresVacio({
-        idUsuario,
-        idPlantaTratamiento: idPlanta,
-        hora: existente.hora || horaLecturaSegunSistema(),
-      }),
-      ...existente,
-      idUsuario: existente.idUsuario ?? idUsuario,
-      idPlantaTratamiento: existente.idPlantaTratamiento ?? idPlanta,
-      fecha: existente.fecha || fechaHoyLocal(),
-      hora: existente.hora || horaLecturaSegunSistema(),
-      medidores: enriquecerLectura3Anterior(
-        existente.medidores?.length ? existente.medidores : [],
-        existente.fecha || fechaHoyLocal(),
-      ),
-    })
+  } catch (error) {
+    console.error('Error al validar registro del día:', error)
+    Utils.notificacion(
+      error.response?.data?.Mensaje || error.message || 'No se pudo validar el registro del día.',
+      false,
+    )
+    volver()
     return
+  } finally {
+    Utils.loadingNotify(false, '')
   }
 
   Utils.loadingNotify(true, 'Cargando macromedidores...')
@@ -303,39 +455,90 @@ const cargar = async () => {
   )
   form.fecha = fecha
   form.hora = hora
+  await aplicarM3DiaMedidores(form.medidores).catch(() => {})
+  await habilitarRecalcM3()
   Utils.loadingNotify(false, '')
 }
 
-const construirLocal = () => ({
-  id: form.id,
-  fecha: form.fecha,
-  hora: form.hora || (esEdicion.value ? horaLecturaSegunSistema() : horaLecturaNuevoRegistro()),
-  idUsuario: form.idUsuario ?? usuarioSesion.value?.IdUsuario ?? null,
-  idPlantaTratamiento: form.idPlantaTratamiento ?? obtenerIdPlantaTratamiento(usuarioSesion.value),
-  medidores: (form.medidores || []).map((m) => ({
-    ...m,
-    m3Dia: calcM3DiaMacromedidor(m),
-  })),
-})
+const construirLocal = () => {
+  const campo = campoLecturaActivo.value
+  const hora =
+    (campo && HORAS_LECTURA_MACROMEDIDOR[campo]) ||
+    form.hora ||
+    (esEdicion.value ? horaLecturaSegunSistema() : horaLecturaNuevoRegistro())
+
+  return {
+    id: form.id,
+    fecha: form.fecha,
+    hora,
+    idUsuario: form.idUsuario ?? usuarioSesion.value?.IdUsuario ?? null,
+    idPlantaTratamiento: form.idPlantaTratamiento ?? obtenerIdPlantaTratamiento(usuarioSesion.value),
+    medidores: (form.medidores || []).map((m) => ({
+      ...m,
+      m3Dia: m.m3Dia ?? calcM3DiaMacromedidor(m),
+    })),
+  }
+}
+
+const confirmarLecturasEnCero = async (medidoresCero, etiquetaCampo) => {
+  const nombres = medidoresCero
+    .map((m) => m.nombre || m.codigo || `Macromedidor ${m.idMacromedidor ?? ''}`)
+    .filter(Boolean)
+  const lista = nombres.map((n) => `• ${n}`).join('<br>')
+  const mensaje =
+    `Hay lecturas en <b>0</b> para <b>${etiquetaCampo}</b> ` +
+    `(campos vacíos o con valor cero).<br><br>` +
+    `${lista}<br><br>` +
+    `¿Desea continuar y guardar de todas formas?`
+
+  return Utils.confirmarAccion(mensaje, 'Lecturas en cero', {
+    html: true,
+    okLabel: 'Guardar',
+  })
+}
 
 const guardar = async () => {
+  if (registroSoloLectura.value) return
   if (!form.fecha) {
     Utils.notificacion('Indica la fecha del registro', false)
     return
   }
 
+  const campo = campoLecturaActivo.value
+  if (!campo) return
+
+  // Vacío (sin marcar Sin Dato) → 0 en el turno activo
+  aplicarCeroEnCamposVacios(form.medidores, campo)
+
+  const conCero = medidoresConLecturaCero(form.medidores, campo)
+  if (conCero.length) {
+    const ok = await confirmarLecturasEnCero(conCero, etiquetasLectura[campo])
+    if (!ok) return
+  }
+
   guardando.value = true
   Utils.loadingNotify(true, 'Guardando...')
   const local = construirLocal()
-  const paquete = construirPaqueteMacromedidores(local, usuarioSesion.value)
+  const esActualizacion =
+    esEdicion.value && (campo === 'acumulado2' || campo === 'acumulado3')
 
   try {
-    const response = await api.post('operaciones-planta/registro-macromedidores', paquete)
+    const paquete = esActualizacion
+      ? construirPaqueteMacromedidoresActualizar(local, campo, usuarioSesion.value)
+      : construirPaqueteMacromedidores(local, usuarioSesion.value)
+
+    const endpoint = esActualizacion
+      ? 'operaciones-planta/registro-macromedidores-actualizar'
+      : 'operaciones-planta/registro-macromedidores'
+
+    const response = await api.post(endpoint, paquete)
     Utils.notificacion(response.data.Mensaje, response.data.IsExito)
     if (!response.data.IsExito) return
 
     if (response.data.Dato?.Id != null) {
       local.id = response.data.Dato.Id
+    } else if (response.data.Dato?.IdRegistro != null) {
+      local.id = response.data.Dato.IdRegistro
     }
     guardarRegistro('macromedidores', local)
     volver()
@@ -559,6 +762,18 @@ onMounted(cargar)
   color: var(--hs-text);
   width: 100%;
   padding: 8px 4px;
+}
+
+.input-calculado :deep(.q-field__control) {
+  background: #f1f5f9;
+}
+
+.input-calculado :deep(.q-field--disabled) {
+  opacity: 1;
+}
+
+.input-calculado :deep(.q-field--disabled .q-field__control) {
+  background: #f1f5f9 !important;
 }
 
 @media (max-width: 1199px) {

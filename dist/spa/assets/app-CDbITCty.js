@@ -1,0 +1,1 @@
+import{B as e}from"./index-Ci393m2a.js";var t=`HydroSol`,n=`Gestión de solubilidad química`,r=`Planta de tratamiento de agua — Línea 03`,i={usuario:`usuario${t}`,registrosPlanta:`registrosPlanta${t}`};function a(t=null){let n=t||e.getItem(i.usuario),r=n?.IdPlantaTratamiento??n?.idPlantaTratamiento;return r!=null&&r!==``?Number(r):4}export{a,i,t as n,n as r,r as t};

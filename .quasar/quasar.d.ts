@@ -17,8 +17,10 @@ declare const __VUE_OPTIONS_API__: boolean;
 // Automatically generated from process.env & dotenv files & build.define & build.defineEnv;
 // Backend-only are not available in client code, so they are marked as optional
 interface ImportMetaEnv {
+  readonly ACSetupSvcPort?: number;
   readonly ALLUSERSPROFILE?: string;
   readonly ANDROID_HOME?: string;
+  readonly ANDROID_SDK_ROOT?: string;
   readonly APPDATA?: string;
   readonly CHROME_CRASHPAD_PIPE_NAME?: string;
   readonly COLOR?: number;
@@ -27,25 +29,18 @@ interface ImportMetaEnv {
   readonly CommonProgramW6432?: string;
   readonly COMPUTERNAME?: string;
   readonly ComSpec?: string;
+  readonly CORDOVA_ANDROID_GRADLE_DISTRIBUTION_URL?: string;
   readonly DriverData?: string;
   readonly EDITOR?: string;
-  readonly EFC_14928_1262719628?: number;
-  readonly EFC_14928_1592913036?: number;
-  readonly EFC_14928_2283032206?: number;
-  readonly EFC_14928_2775293581?: number;
-  readonly EFC_14928_3789132940?: number;
-  readonly EFC_14928_4126798990?: number;
-  readonly FPS_BROWSER_APP_PROFILE_STRING?: string;
-  readonly FPS_BROWSER_USER_PROFILE_STRING?: string;
+  readonly EFC_7500_1592913036?: number;
+  readonly EFC_7500_4126798990?: number;
   readonly GIT_ASKPASS?: string;
   readonly HOME?: string;
   readonly HOMEDRIVE?: string;
   readonly HOMEPATH?: string;
-  readonly IGCCSVC_DB?: string;
   readonly INIT_CWD?: string;
   readonly JAVA_HOME?: string;
   readonly LANG?: string;
-  readonly LEVEL_ZERO_V1_SDK_PATH?: string;
   readonly LOCALAPPDATA?: string;
   readonly LOGONSERVER?: string;
   readonly NODE?: string;
@@ -55,7 +50,6 @@ interface ImportMetaEnv {
   readonly npm_config_globalconfig?: string;
   readonly npm_config_global_prefix?: string;
   readonly npm_config_init_module?: string;
-  readonly npm_config_legacy_peer_deps?: boolean;
   readonly npm_config_local_prefix?: string;
   readonly npm_config_node_gyp?: string;
   readonly npm_config_noproxy?: string;
@@ -72,9 +66,8 @@ interface ImportMetaEnv {
   readonly npm_package_name?: string;
   readonly npm_package_version?: string;
   readonly NUMBER_OF_PROCESSORS?: number;
-  readonly NVM_HOME?: string;
-  readonly NVM_SYMLINK?: string;
   readonly OneDrive?: string;
+  readonly OneDriveConsumer?: string;
   readonly OS?: string;
   readonly Path?: string;
   readonly PATHEXT?: string;
@@ -88,6 +81,7 @@ interface ImportMetaEnv {
   readonly PROMPT?: string;
   readonly PSModulePath?: string;
   readonly PUBLIC?: string;
+  readonly RlsSvcPort?: number;
   readonly SESSIONNAME?: string;
   readonly SystemDrive?: string;
   readonly SystemRoot?: string;
@@ -99,8 +93,7 @@ interface ImportMetaEnv {
   readonly USERDOMAIN_ROAMINGPROFILE?: string;
   readonly USERNAME?: string;
   readonly USERPROFILE?: string;
-  readonly VBOX_MSI_INSTALL_PATH?: string;
-  readonly VS140COMNTOOLS?: string;
+  readonly VBOX_HWVIRTEX_IGNORE_SVM_IN_USE?: number;
   readonly VSCODE_GIT_ASKPASS_EXTRA_ARGS?: string;
   readonly VSCODE_GIT_ASKPASS_MAIN?: string;
   readonly VSCODE_GIT_ASKPASS_NODE?: string;
@@ -108,6 +101,5 @@ interface ImportMetaEnv {
   readonly VSCODE_INJECTION?: number;
   readonly VSCODE_PYTHON_AUTOACTIVATE_GUARD?: number;
   readonly windir?: string;
-  readonly ZES_ENABLE_SYSMAN?: number;
   readonly VITE_API_URL?: string;
 }
